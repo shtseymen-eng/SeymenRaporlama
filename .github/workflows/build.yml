@@ -1,0 +1,66 @@
+name: Windows EXE ve Mac APP
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Windows EXE dosyası bileşimi
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Bağımlılıkları kur
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: EXE oluştur
+        run: |
+          pyinstaller --onefile --windowed --name "SYMN_Pregate_Raporlama" ^
+            --icon="assets/logo.ico" ^
+            --add-data "assets;assets" ^
+            seymen_raporlama.py
+        shell: cmd
+
+      - name: Artifacts yükle (Windows EXE)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYMN_Pregate_Raporlama_Windows
+          path: dist/SYMN_Pregate_Raporlama.exe
+
+  build-mac:
+    name: Mac için .app paketi olarak derlendi
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Bağımlılıkları kur
+        run: |
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: .app oluştur
+        run: |
+          pyinstaller --onefile --windowed --name "SYMN_Pregate_Raporlama" \
+            --icon="assets/logo.ico" \
+            --add-data "assets:assets" \
+            seymen_raporlama.py
+
+      - name: Artifacts yükle (Mac .app)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SYMN_Pregate_Raporlama_Mac
+          path: dist/SYMN_Pregate_Raporlama.app
