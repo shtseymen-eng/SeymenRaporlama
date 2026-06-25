@@ -99,7 +99,7 @@ KATEGORILER = [
 
 # ── Pregate sunum — yeni red sınıflandırması (İptal Adımı sütunundan) ─────────
 ANA_NEDENLER = [
-    "EVRAKSAL", "FİRMA TALEBİ İPTAL", "SÜRÜCÜ", "DONANIMSAL", "KKD"
+    "EVRAKSAL", "FİRMA TALEBİ İPTAL", "SÜRÜCÜ", "DONANIMSAL", "KKD", "DİĞER"
 ]
 
 PREGATE_RED_ADIMLARI   = {"PregateRed", "PregateKayitRed"}
@@ -618,6 +618,11 @@ class VeriMotoru:
         # ── Ana Neden pivot ──────────────────────────────────────────────────
         if neden_col:
             red_df["_ANA_NEDEN"] = red_df[neden_col].astype(str).str.strip().str.upper()
+            # Listede olmayan değerleri DİĞER'e aktar — toplam tutarlılığı için
+            _bilinen = set(ANA_NEDENLER)
+            red_df["_ANA_NEDEN"] = red_df["_ANA_NEDEN"].apply(
+                lambda x: x if x in _bilinen else "DİĞER"
+            )
         else:
             red_df["_ANA_NEDEN"] = "DİĞER"
 
