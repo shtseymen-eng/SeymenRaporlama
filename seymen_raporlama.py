@@ -4267,7 +4267,105 @@ class SeymenRaporlama(ctk.CTk):
             ozet_df = self.motor.ozet_sayim_tablosu()
             _yaz(ozet_df, "📊 Genel Özet", ALTIN)
 
-            # ─── 2. DİNAMİK HAM VERİ ─────────────────────────────────────────
+            # ─── 2. NAKLİYECİ RED MATRİX AÇIKLAMA SAYFASI ───────────────────
+            aciklama_data = {
+                "Sütun Adı": [
+                    "EVRAKSAL",
+                    "FİRMA TALEBİ İPTAL",
+                    "SÜRÜCÜ",
+                    "DONANIMSAL",
+                    "KKD",
+                    "DİĞER",
+                    "",
+                    "PREGATE RED",
+                    "SEVKİYAT RED",
+                    "OPERASYON RED",
+                    "",
+                    "Toplam Red",
+                    "Toplam Giriş",
+                    "",
+                    "ÖNEMLİ NOT",
+                ],
+                "Kaynak / Açıklama": [
+                    "Ana Neden = EVRAKSAL olan red kayıtları (eksik/geçersiz evrak)",
+                    "Ana Neden = FİRMA TALEBİ İPTAL olan kayıtlar (firma kendi isteğiyle iptal)",
+                    "Ana Neden = SÜRÜCÜ olan kayıtlar (sürücü kaynaklı red)",
+                    "Ana Neden = DONANIMSAL olan kayıtlar (araç/donanım eksikliği)",
+                    "Ana Neden = KKD olan kayıtlar (Kişisel Koruyucu Donanım eksikliği)",
+                    "Ana Neden listesinde yer almayan tüm diğer red kayıtları",
+                    "",
+                    "İptal Adımı = 'PregateRed' VEYA 'PregateKayitRed' olan satırlar",
+                    "İptal Adımı = 'SevkiyatPlanlama' olan satırlar",
+                    "İptal Adımı = 'PlatformRed' VEYA 'TerminalRed' olan satırlar",
+                    "",
+                    "= PREGATE RED + SEVKİYAT RED + OPERASYON RED toplamı",
+                    "= Onaylanan + Reddedilen tüm araç girişleri (o nakliyeciye ait)",
+                    "",
+                    "Ana Neden sütunlarının toplamı her zaman Toplam Red ile eşit olmalıdır. "                    "Eşit değilse veri dosyasındaki Ana Neden sütununda "                    "tanımsız değerler vardır — bunlar DİĞER sütununa aktarılmıştır.",
+                ],
+                "Kaynak Sütun (Excel'de)": [
+                    "Ana Neden",
+                    "Ana Neden",
+                    "Ana Neden",
+                    "Ana Neden",
+                    "Ana Neden",
+                    "Ana Neden",
+                    "",
+                    "İptal Adımı",
+                    "İptal Adımı",
+                    "İptal Adımı",
+                    "",
+                    "Hesaplanmış",
+                    "Tüm kayıtlar",
+                    "",
+                    "",
+                ],
+            }
+            aciklama_df = pd.DataFrame(aciklama_data)
+            aciklama_df.to_excel(wb_writer, sheet_name="ℹ Açıklama", index=False)
+            ws_ac = wb_writer.sheets["ℹ Açıklama"]
+            # Başlık stili
+            for ci, col in enumerate(aciklama_df.columns, 1):
+                h = ws_ac.cell(row=1, column=ci)
+                h.fill = PatternFill("solid", fgColor="0D1117")
+                h.font = Font(color=ALTIN, bold=True, size=11, name="Calibri")
+                h.alignment = Alignment(horizontal="center", vertical="center")
+                h.border = Border(bottom=Side(style="thin", color="252D3D"))
+            ws_ac.row_dimensions[1].height = 22
+            # Veri satırları
+            for ri in range(2, ws_ac.max_row + 1):
+                val0 = str(ws_ac.cell(row=ri, column=1).value or "")
+                if val0 == "":
+                    bg = "080C14"
+                elif val0 in ("PREGATE RED", "SEVKİYAT RED", "OPERASYON RED",
+                               "Toplam Red", "Toplam Giriş"):
+                    bg = "0A1520"
+                elif val0 == "ÖNEMLİ NOT":
+                    bg = "1A0A00"
+                else:
+                    bg = "141C2B" if ri % 2 == 0 else "111827"
+                for ci in range(1, ws_ac.max_column + 1):
+                    h = ws_ac.cell(row=ri, column=ci)
+                    h.fill = PatternFill("solid", fgColor=bg)
+                    font_col = "E8EDF5"
+                    if val0 in ("PREGATE RED", "SEVKİYAT RED", "OPERASYON RED"):
+                        font_col = "E87070"
+                    elif val0 == "Toplam Red":
+                        font_col = "E8A070"
+                    elif val0 == "ÖNEMLİ NOT":
+                        font_col = ALTIN
+                    h.font = Font(color=font_col, size=10, name="Calibri",
+                                  bold=(val0 == "ÖNEMLİ NOT"))
+                    h.alignment = Alignment(horizontal="left", vertical="center",
+                                            wrap_text=True)
+                ws_ac.row_dimensions[ri].height = 36 if val0 == "ÖNEMLİ NOT" else 20
+            # Sütun genişlikleri
+            ws_ac.column_dimensions["A"].width = 28
+            ws_ac.column_dimensions["B"].width = 75
+            ws_ac.column_dimensions["C"].width = 22
+            ws_ac.sheet_properties.tabColor = ALTIN[:6]
+
+            # ─── 3. DİNAMİK HAM VERİ ─────────────────────────────────────────
             if not self.motor.df_dinamik.empty:
                 _yaz(self.motor.df_dinamik, "Dinamik Ham Veri", MAVI)
 
@@ -4344,7 +4442,7 @@ class SeymenRaporlama(ctk.CTk):
             try:
                 from openpyxl import load_workbook
                 wb = load_workbook(yol)
-                sayfa_sirasi = ["📊 Genel Özet"]
+                sayfa_sirasi = ["📊 Genel Özet", "ℹ Açıklama"]
                 diger = [s for s in wb.sheetnames if s not in sayfa_sirasi]
                 wb._sheets = [wb[s] for s in sayfa_sirasi
                               if s in wb.sheetnames] + \
@@ -4359,6 +4457,7 @@ class SeymenRaporlama(ctk.CTk):
                 f"{os.path.basename(yol)}\n\n"
                 f"İçerik:\n"
                 f"  • Genel Özet\n"
+                f"  • Açıklama (Matrix sütun tanımları)\n"
                 f"  • Dinamik Ham Veri + Departman sayfaları\n"
                 f"  • Pregate Ham Veri + Terminal sayfası\n"
                 f"  • Pregate Red / Sevkiyat Red / Operasyon Red\n"
