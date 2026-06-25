@@ -51,9 +51,14 @@ try:
 except ImportError:
     PIL_OK = False
 
-# ── Asset yolları ─────────────────────────────────────────────────────────────
-_PROG_DIR   = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR  = os.path.join(_PROG_DIR, "assets")
+# ── Asset yolları — PyInstaller (frozen) ve normal çalışma için ──────────────
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    # PyInstaller .exe / .app içinden çalışıyor → geçici extract klasörü
+    _PROG_DIR = sys._MEIPASS
+else:
+    _PROG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+ASSETS_DIR = os.path.join(_PROG_DIR, "assets")
 
 def asset(dosya):
     """assets/ klasöründen dosya yolunu döndürür."""

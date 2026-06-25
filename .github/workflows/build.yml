@@ -1,71 +1,131 @@
-name: Windows EXE ve Mac APP
+name: Build & Release — Windows EXE + macOS APP
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+    tags:     [ 'v*.*.*' ]       # v1.0.0 gibi tag gelince release çıkar
+  workflow_dispatch:             # elle tetikleme
 
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
+
+  # ══════════════════════════════════════════════════════════════════════════
   build-windows:
-    name: Windows EXE dosyası bileşimi
+    name: 🪟 Windows EXE
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python kurulumu
+      - name: Python 3.11 kur
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Bağımlılıkları kur
         run: |
+          python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install -r requirements.txt
+          pip install customtkinter pandas openpyxl python-pptx pillow xlsxwriter
 
-      - name: EXE oluştur
-        run: |
-          pyinstaller --onefile --windowed --name "SYMN_Pregate_Raporlama" ^
-            --icon="assets/logo.ico" ^
-            --add-data "assets;assets" ^
-            seymen_raporlama.py
+      - name: EXE derle (PyInstaller spec)
+        run: pyinstaller SeymenRaporlama.spec --distpath dist_win --workpath build_win
         shell: cmd
 
-      - name: Artifacts yükle (Windows EXE)
+      - name: Çıktıyı kontrol et
+        run: dir dist_win
+        shell: cmd
+
+      - name: Artifact yükle
         uses: actions/upload-artifact@v4
         with:
-          name: SYMN_Pregate_Raporlama_Windows
-          path: dist/SYMN_Pregate_Raporlama.exe
+          name: SeymenRaporlama-Windows
+          path: dist_win/SeymenRaporlama.exe
+          retention-days: 30
 
-  build-mac:
-    name: Mac için .app paketi olarak derlendi
+  # ══════════════════════════════════════════════════════════════════════════
+  build-macos:
+    name: 🍎 macOS APP
     runs-on: macos-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Python kurulumu
+      - name: Python 3.11 kur
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Bağımlılıkları kur
         run: |
+          python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install -r requirements.txt
+          pip install customtkinter pandas openpyxl python-pptx pillow xlsxwriter
 
-      - name: .app oluştur
+      - name: .app derle (PyInstaller spec)
+        run: pyinstaller SeymenRaporlama.spec --distpath dist_mac --workpath build_mac
+
+      - name: .app → DMG paketle
         run: |
-          pyinstaller --onefile --windowed --name "SYMN_Pregate_Raporlama" \
-            --icon="assets/logo.ico" \
-            --add-data "assets:assets" \
-            seymen_raporlama.py
+          brew install create-dmg || true
+          create-dmg \
+            --volname "SeymenRaporlama" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "SeymenRaporlama.app" 175 190 \
+            --hide-extension "SeymenRaporlama.app" \
+            --app-drop-link 425 190 \
+            "dist_mac/SeymenRaporlama.dmg" \
+            "dist_mac/SeymenRaporlama.app" \
+          || (cd dist_mac && zip -r SeymenRaporlama_mac.zip SeymenRaporlama.app)
 
-      - name: .app'i zip'le
-        run: |
-          cd dist
-          zip -r SYMN_Pregate_Raporlama_Mac.zip SYMN_Pregate_Raporlama.app
-
-      - name: Artifacts yükle (Mac .app)
+      - name: Artifact yükle
         uses: actions/upload-artifact@v4
         with:
-          name: SYMN_Pregate_Raporlama_Mac
-          path: dist/SYMN_Pregate_Raporlama_Mac.zip
+          name: SeymenRaporlama-macOS
+          path: |
+            dist_mac/SeymenRaporlama.dmg
+            dist_mac/SeymenRaporlama_mac.zip
+          retention-days: 30
+
+  # ══════════════════════════════════════════════════════════════════════════
+  release:
+    name: 📦 GitHub Release oluştur
+    needs: [ build-windows, build-macos ]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')   # sadece tag push'ta
+
+    steps:
+      - name: Windows artifact indir
+        uses: actions/download-artifact@v4
+        with:
+          name: SeymenRaporlama-Windows
+          path: release/
+
+      - name: macOS artifact indir
+        uses: actions/download-artifact@v4
+        with:
+          name: SeymenRaporlama-macOS
+          path: release/
+
+      - name: Release oluştur ve dosyaları ekle
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SeymenRaporlama ${{ github.ref_name }}"
+          body: |
+            ## Seymen Raporlama — ${{ github.ref_name }}
+
+            ### Kurulum (Python gerekmez)
+
+            | Platform | İndir |
+            |----------|-------|
+            | 🪟 Windows | `SeymenRaporlama.exe` — indirip çift tıkla |
+            | 🍎 macOS   | `SeymenRaporlama.dmg` — aç, Applications'a sürükle |
+
+            > macOS'ta ilk açılışta: **Sağ tık → Aç → Aç** (Gatekeeper uyarısını geç)
+          draft: false
+          prerelease: false
+          files: release/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
