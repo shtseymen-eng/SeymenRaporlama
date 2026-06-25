@@ -704,6 +704,62 @@ class VeriMotoru:
             "genel_matrix":  genel_pivot,
         }
 
+
+    # ── İptal Açıklama bazlı detay red matrix ────────────────────────────────
+    def detay_red_matrix(self, departman="Poliport Terminal"):
+        """
+        Nakliyeci × İptal Açıklama pivot — her red tipi için ayrı DataFrame.
+
+        Ana Neden yerine gerçek iptal açıklaması (serbest metin) kullanılır.
+        Her DataFrame: satır = Nakliyeci, sütun = İptal Açıklama değerleri,
+        son sütun = Toplam. Son satır = TOPLAM.
+
+        Döner: dict {"pregate": df, "sevkiyat": df, "operasyon": df}
+        """
+        df = self._pregate_filtrele(departman)
+        if df.empty:
+            return {}
+
+        nak_col  = sutun_bul(df, ["nakliyeci adi","nakliyeci adı","nakliye","Nakliyeci"])
+        adim_col = sutun_bul(df, ["iptal adimi","iptal adımı","İptal Adımı"])
+        acik_col = sutun_bul(df, ["iptal aciklama","İptal Aciklama",
+                                   "iptal açıklama","İptal Açıklama",
+                                   "aciklama","açıklama","neden"])
+
+        if not nak_col or not adim_col:
+            return {}
+
+        df = df.copy()
+        df["_N"] = df[nak_col].astype(str).str.strip().str.upper()
+        df = df[df["_N"] != "NAN"]
+
+        sa = df[adim_col].astype(str).str.strip()
+
+        if acik_col:
+            df["_DETAY"] = df[acik_col].astype(str).str.strip()
+        else:
+            df["_DETAY"] = "(Açıklama yok)"
+
+        # Boş/nan detayları etiketle
+        df["_DETAY"] = df["_DETAY"].replace({"nan": "(Açıklama yok)", "": "(Açıklama yok)"})
+
+        def _pivot_yap(maske):
+            alt = df[maske].copy()
+            if alt.empty:
+                return pd.DataFrame()
+            pivot = pd.crosstab(alt["_N"], alt["_DETAY"])
+            pivot["Toplam"] = pivot.sum(axis=1)
+            pivot = pivot.sort_values("Toplam", ascending=False)
+            pivot.loc["TOPLAM"] = pivot.sum()
+            pivot.index.name = "Nakliyeci"
+            return pivot
+
+        return {
+            "pregate":   _pivot_yap(sa.isin(PREGATE_RED_ADIMLARI)),
+            "sevkiyat":  _pivot_yap(sa.isin(SEVKIYAT_RED_ADIMLARI)),
+            "operasyon": _pivot_yap(sa.isin(OPERASYON_RED_ADIMLARI)),
+        }
+
     # ── Tüm departmanlar için özet sayım tablosu ─────────────────────────────
     def ozet_sayim_tablosu(self):
         """Ana sayfa KPI'larını DataFrame satırları olarak döndürür."""
@@ -4420,6 +4476,55 @@ class SeymenRaporlama(ctk.CTk):
                 if not mx.empty:
                     mx_reset = mx.reset_index()
                     _yaz(mx_reset, "🗂 Nakliyeci Red Matrix", "7B241C")
+
+                # ── Detay Red sayfaları (İptal Açıklama bazlı) ───────────────
+                detay = self.motor.detay_red_matrix("Poliport Terminal")
+                if detay:
+                    for tip_key, sayfa_adi, renk in [
+                        ("pregate",   "📋 Detay Pregate Red",   KIRMIZI),
+                        ("sevkiyat",  "📋 Detay Sevkiyat Red",  "E67E22"),
+                        ("operasyon", "📋 Detay Operasyon Red", "2E86DE"),
+                    ]:
+                        df_det = detay.get(tip_key, pd.DataFrame())
+                        if df_det.empty:
+                            continue
+                        df_det_r = df_det.reset_index()
+                        df_det_r.to_excel(wb_writer, sheet_name=sayfa_adi, index=False)
+                        ws_d = wb_writer.sheets[sayfa_adi]
+                        # Başlık satırı
+                        for ci in range(1, ws_d.max_column + 1):
+                            h = ws_d.cell(row=1, column=ci)
+                            h.fill = PatternFill("solid", fgColor=BASLIK_BG)
+                            h.font = Font(color=renk if isinstance(renk, str) else KIRMIZI,
+                                          bold=True, size=10, name="Calibri")
+                            h.alignment = Alignment(horizontal="center",
+                                                    vertical="center", wrap_text=True)
+                            h.border = Border(bottom=Side(style="thin", color="252D3D"))
+                        ws_d.row_dimensions[1].height = 28
+                        # Veri satırları
+                        for ri in range(2, ws_d.max_row + 1):
+                            val0 = str(ws_d.cell(row=ri, column=1).value or "")
+                            bg = "1A0A0A" if val0 == "TOPLAM" else (
+                                 SATIR1 if ri % 2 == 0 else SATIR2)
+                            fnt_bold = (val0 == "TOPLAM")
+                            for ci in range(1, ws_d.max_column + 1):
+                                h = ws_d.cell(row=ri, column=ci)
+                                h.fill = PatternFill("solid", fgColor=bg)
+                                h.font = Font(color="E8EDF5", size=10,
+                                              name="Calibri", bold=fnt_bold)
+                                h.alignment = Alignment(horizontal="center",
+                                                        vertical="center")
+                            ws_d.row_dimensions[ri].height = 18
+                        # Sütun genişlikleri — 1. sütun (Nakliyeci) geniş,
+                        # detay sütunları orta, son sütun (Toplam) dar
+                        ws_d.column_dimensions[get_column_letter(1)].width = 30
+                        for ci in range(2, ws_d.max_column):
+                            col_hdr = str(ws_d.cell(row=1, column=ci).value or "")
+                            ws_d.column_dimensions[get_column_letter(ci)].width = min(
+                                max(len(col_hdr) + 2, 14), 45)
+                        ws_d.column_dimensions[
+                            get_column_letter(ws_d.max_column)].width = 10
+                        ws_d.sheet_properties.tabColor = renk[:6]
 
             # ─── 11. NAKLİYECİ ONAY LİSTESİ ──────────────────────────────────
             if not self.motor.df_pol_tmp.empty:
