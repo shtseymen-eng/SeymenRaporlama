@@ -1732,13 +1732,12 @@ class SeymenRaporlama(ctk.CTk):
             text_color=C["altin_dim"]
         ).pack(side="left", padx=(0, 14))
 
-        self.lbl_tarih = ctk.CTkLabel(
+        ctk.CTkLabel(
             sag,
-            text=datetime.datetime.now().strftime("%d.%m.%Y  %H:%M"),
-            font=("Arial", 12),
-            text_color=C["metin_dim"],
-        )
-        self.lbl_tarih.pack(side="left", padx=(0, 10))
+            text="🟢  AKTİF",
+            font=("Arial", 11, "bold"),
+            text_color="#26A65B",
+        ).pack(side="left", padx=(0, 10))
 
         # Tema değiştirici
         self._tema_var = ctk.StringVar(value="Dark")
