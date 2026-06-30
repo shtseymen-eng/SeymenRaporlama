@@ -765,6 +765,64 @@ class VeriMotoru:
             "operasyon": _pivot_yap(sa.isin(OPERASYON_RED_ADIMLARI)),
         }
 
+
+    # ── Alt birim / havuz pivot tabloları ────────────────────────────────────
+    def alt_birim_ana_neden_pivot(self, departman, alt_birim=None):
+        """
+        Nakliyeci × Ana Neden pivot (dinamik rapor).
+        alt_birim verilirse sadece o havuz; verilmezse tüm departman.
+        """
+        df = self._dinamik_filtrele(departman, alt_birim)
+        if df.empty:
+            return pd.DataFrame()
+
+        nak_col   = sutun_bul(df, ["nakliyeci adi","nakliyeci adı","nakliye"])
+        neden_col = sutun_bul(df, ["ana neden","Ana Neden","ana_neden",
+                                    "iptal neden","neden"])
+        if not nak_col or not neden_col:
+            return pd.DataFrame()
+
+        df = df.copy()
+        df["_N"] = df[nak_col].astype(str).str.strip().str.upper()
+        df["_D"] = df[neden_col].astype(str).str.strip()
+        df = df[~df["_N"].isin(["NAN","","NONE"])]
+        df["_D"] = df["_D"].replace({"nan":"(Belirtilmemiş)","":"(Belirtilmemiş)"})
+
+        pivot = pd.crosstab(df["_N"], df["_D"])
+        pivot["TOPLAM"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("TOPLAM", ascending=False)
+        pivot.loc["TOPLAM"] = pivot.sum()
+        pivot.index.name = "Nakliyeci"
+        return pivot
+
+    def alt_birim_iptal_detay_pivot(self, departman, alt_birim=None):
+        """
+        Nakliyeci × İptal Açıklama pivot (dinamik rapor).
+        alt_birim verilirse sadece o havuz; verilmezse tüm departman.
+        """
+        df = self._dinamik_filtrele(departman, alt_birim)
+        if df.empty:
+            return pd.DataFrame()
+
+        nak_col  = sutun_bul(df, ["nakliyeci adi","nakliyeci adı","nakliye"])
+        acik_col = sutun_bul(df, ["iptal aciklama","İptal Aciklama","aciklama",
+                                   "açıklama","neden","sebep"])
+        if not nak_col or not acik_col:
+            return pd.DataFrame()
+
+        df = df.copy()
+        df["_N"] = df[nak_col].astype(str).str.strip().str.upper()
+        df["_A"] = df[acik_col].astype(str).str.strip()
+        df = df[~df["_N"].isin(["NAN","","NONE"])]
+        df["_A"] = df["_A"].replace({"nan":"(Açıklama Yok)","":"(Açıklama Yok)"})
+
+        pivot = pd.crosstab(df["_N"], df["_A"])
+        pivot["TOPLAM"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("TOPLAM", ascending=False)
+        pivot.loc["TOPLAM"] = pivot.sum()
+        pivot.index.name = "Nakliyeci"
+        return pivot
+
     # ── Tüm departmanlar için özet sayım tablosu ─────────────────────────────
     def ozet_sayim_tablosu(self):
         """Ana sayfa KPI'larını DataFrame satırları olarak döndürür."""
@@ -2992,6 +3050,92 @@ class SeymenRaporlama(ctk.CTk):
             self._yaz("  ⚠  Red nedeni sütunu bulunamadı.\n", "uyari")
 
         self._eksik_uyari_ekle(df)
+
+        # ── Ana Neden Pivot & İptal Detay Pivot indirme butonları ────────────
+        self._yaz("\n  DAĞILIM TABLOLARI  \n", "h1")
+        self._yaz("  Ana Neden Pivot ve İptal Detay Pivot tablolarını Excel olarak indirebilirsiniz.\n", "uyari")
+
+        btn_cerceve = ctk.CTkFrame(self.txt_rapor, fg_color=C["card2"],
+                                   corner_radius=8)
+        self.txt_rapor.window_create("end", window=btn_cerceve)
+        self.txt_rapor.insert("end", "\n")
+
+        def _pivot_excel_kaydet(pivot_tipi):
+            if pivot_tipi == "ana_neden":
+                pvt = self.motor.alt_birim_ana_neden_pivot(dep, alt_birim)
+                ad  = f"AnaNeden_{(alt_birim or dep).replace(' ','_')}"
+            else:
+                pvt = self.motor.alt_birim_iptal_detay_pivot(dep, alt_birim)
+                ad  = f"IptalDetay_{(alt_birim or dep).replace(' ','_')}"
+
+            if pvt.empty:
+                messagebox.showwarning("Uyarı",
+                    "Pivot oluşturulamadı — veri dosyasında ilgili sütun bulunamadı.")
+                return
+
+            yol = filedialog.asksaveasfilename(
+                title="Pivot Tabloyu Kaydet",
+                defaultextension=".xlsx",
+                initialfile=f"{ad}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                filetypes=[("Excel","*.xlsx")]
+            )
+            if not yol:
+                return
+            try:
+                from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+                pvt_r = pvt.reset_index()
+                with pd.ExcelWriter(yol, engine="openpyxl") as w:
+                    pvt_r.to_excel(w, index=False,
+                                   sheet_name="Pivot")
+                    ws = w.sheets["Pivot"]
+                    # Başlık stili
+                    for ci in range(1, ws.max_column+1):
+                        h = ws.cell(row=1, column=ci)
+                        h.fill = PatternFill("solid", fgColor="0D1117")
+                        h.font = Font(color="D4AF37", bold=True, size=10, name="Calibri")
+                        h.alignment = Alignment(horizontal="center", wrap_text=True)
+                        h.border = Border(bottom=Side(style="thin", color="252D3D"))
+                    ws.row_dimensions[1].height = 24
+                    # TOPLAM satırını vurgula
+                    toplam_r = ws.max_row
+                    for ci in range(1, ws.max_column+1):
+                        h = ws.cell(row=toplam_r, column=ci)
+                        h.fill = PatternFill("solid", fgColor="1A0A00")
+                        h.font = Font(color="E67E22", bold=True, size=10, name="Calibri")
+                    # Veri satırları
+                    for ri in range(2, toplam_r):
+                        bg = "141C2B" if ri%2==0 else "111827"
+                        for ci in range(1, ws.max_column+1):
+                            h = ws.cell(row=ri, column=ci)
+                            h.fill = PatternFill("solid", fgColor=bg)
+                            h.font = Font(color="E8EDF5", size=10, name="Calibri")
+                            h.alignment = Alignment(horizontal="center")
+                    # Sütun genişlikleri
+                    ws.column_dimensions[get_column_letter(1)].width = 32
+                    for ci in range(2, ws.max_column+1):
+                        hdr = str(ws.cell(row=1,column=ci).value or "")
+                        ws.column_dimensions[get_column_letter(ci)].width = min(max(len(hdr)+2,10),40)
+                self._bildirim(f"✔  {os.path.basename(yol)} kaydedildi")
+            except Exception as e:
+                messagebox.showerror("Hata", f"Excel oluşturulamadı:\n{e}")
+
+        ctk.CTkButton(
+            btn_cerceve,
+            text="📊  Ana Neden Pivot  →  Excel",
+            fg_color=C["mor"], hover_color="#5A1E8A",
+            font=("Arial", 11, "bold"), height=34, corner_radius=8,
+            command=lambda: _pivot_excel_kaydet("ana_neden")
+        ).pack(side="left", padx=(8,6), pady=8)
+
+        ctk.CTkButton(
+            btn_cerceve,
+            text="📋  İptal Detay Pivot  →  Excel",
+            fg_color=C["turuncu"], hover_color="#A04A00",
+            font=("Arial", 11, "bold"), height=34, corner_radius=8,
+            command=lambda: _pivot_excel_kaydet("iptal_detay")
+        ).pack(side="left", padx=(0,8), pady=8)
+
         self._imza_footer_ekle(None)
 
     # =========================================================================
