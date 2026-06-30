@@ -3353,17 +3353,34 @@ class SeymenRaporlama(ctk.CTk):
             s = df_red[nak_col].astype(str).str.strip()
             firma_listesi = list(s[s != "nan"].value_counts().head(20).items())
 
-        # Sağ: İptal Açıklaması listesi (red tipine göre doğru sütun)
+        # ── Ana Neden dağılımı (tüm red tipleri için) ──────────────────────────
+        ana_neden_listesi = []
+        if not df_red.empty:
+            an_col = sutun_bul(df_red, ["ana neden","Ana Neden","ana_neden"])
+            if an_col:
+                s = df_red[an_col].astype(str).str.strip()
+                ana_neden_listesi = list(
+                    s[~s.isin(["nan","","None"])].value_counts().head(20).items())
+
+        # ── İptal Açıklama dağılımı — geniş fallback arama ─────────────────
         acik_listesi = []
         if not df_red.empty:
-            # Operasyon Red → Kantar Red sütunu, diğerleri → Ana Neden / İptal Aciklama
             if red_tipi == "Operasyon Red":
-                ac = sutun_bul(df_red, ["kantar red","kantar"])
-            else:
-                ac = sutun_bul(df_red, ["ana neden","Ana Neden","iptal aciklama","aciklama","neden"])
+                # Önce Kantar Red, sonra genel açıklama sütunlarına bak
+                ac = (sutun_bul(df_red, ["kantar red","kantar"])
+                      or sutun_bul(df_red, ["iptal aciklama","İptal Aciklama",
+                                            "aciklama","açıklama","neden"]))
+            elif red_tipi == "Sevkiyat Red":
+                ac = sutun_bul(df_red, ["iptal aciklama","İptal Aciklama",
+                                         "aciklama","açıklama","neden",
+                                         "kantar red","kantar"])
+            else:  # Pregate Red
+                ac = sutun_bul(df_red, ["iptal aciklama","İptal Aciklama",
+                                         "aciklama","açıklama","neden"])
             if ac:
                 s = df_red[ac].astype(str).str.strip()
-                acik_listesi = list(s[s != "nan"].value_counts().head(20).items())
+                acik_listesi = list(
+                    s[~s.isin(["nan","","None"])].value_counts().head(20).items())
 
         # Layout
         ana = self._ozel_frame
@@ -3401,21 +3418,19 @@ class SeymenRaporlama(ctk.CTk):
             command=self._nakliye_red
         ).pack(side="left")
 
-        # İki panel: Nakliyeci | İptal Açıklaması
+        # Üç panel: Nakliyeci | Ana Neden | İptal Açıklama
         panel = ctk.CTkFrame(ana, fg_color="transparent")
         panel.grid(row=1, column=0, sticky="nsew")
         panel.grid_rowconfigure(0, weight=1)
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_columnconfigure(1, weight=1)
-
-        baslik_sol = f"🏢  Nakliyeci Firma  ({red_say} {red_tipi})"
-        baslik_sag = "📋  İptal Açıklaması  (Sebep Bazlı Adet)"
+        panel.grid_columnconfigure(2, weight=1)
 
         def _liste_p(parent, sutun, baslik_txt, liste, val_clr, sembol):
+            pad_l = (0,5) if sutun == 0 else (5,5) if sutun == 1 else (5,0)
             c = ctk.CTkFrame(parent, fg_color=C["card"], corner_radius=10,
                              border_width=1, border_color=C["border"])
-            c.grid(row=0, column=sutun, sticky="nsew",
-                   padx=(0,6) if sutun==0 else (6,0))
+            c.grid(row=0, column=sutun, sticky="nsew", padx=pad_l)
             c.grid_columnconfigure(0, weight=1)
             c.grid_rowconfigure(1, weight=1)
             ctk.CTkLabel(c, text=baslik_txt,
@@ -3432,7 +3447,7 @@ class SeymenRaporlama(ctk.CTk):
                     rw = ctk.CTkFrame(sc, fg_color=bg, corner_radius=5)
                     rw.pack(fill="x", pady=1)
                     rw.grid_columnconfigure(0, weight=1)
-                    ctk.CTkLabel(rw, text=f"  {sembol}  {str(ad)[:45]}",
+                    ctk.CTkLabel(rw, text=f"  {sembol}  {str(ad)[:40]}",
                                  font=("Consolas", 10),
                                  text_color=C["metin"], anchor="w"
                                  ).grid(row=0, column=0, sticky="w", padx=4, pady=3)
@@ -3441,12 +3456,19 @@ class SeymenRaporlama(ctk.CTk):
                                  text_color=val_clr
                                  ).grid(row=0, column=1, padx=8)
             else:
-                ctk.CTkLabel(sc, text="Bu tipte kayıt yok",
+                ctk.CTkLabel(sc, text="Veri yok",
                              font=("Arial", 10),
                              text_color=C["metin_dim"]).pack(pady=14)
 
-        _liste_p(panel, 0, baslik_sol,  firma_listesi, C["kirmizi"], "✖")
-        _liste_p(panel, 1, baslik_sag, acik_listesi,  C["turuncu"], "▶")
+        _liste_p(panel, 0,
+                 f"🏢  Nakliyeci Firma  ({red_say} kayıt)",
+                 firma_listesi, C["kirmizi"], "✖")
+        _liste_p(panel, 1,
+                 "🏷  Ana Neden Dağılımı",
+                 ana_neden_listesi, C["mor"], "◆")
+        _liste_p(panel, 2,
+                 "📋  İptal Açıklama Dağılımı",
+                 acik_listesi, C["turuncu"], "▶")
 
     def _red_detay_popup(self, red_tipi, df_red,
                          nak_col, durum_col, acik_col, tarih_col, plaka_col):
