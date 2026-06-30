@@ -3426,35 +3426,82 @@ class SeymenRaporlama(ctk.CTk):
         panel.grid_columnconfigure(1, weight=1)
         panel.grid_columnconfigure(2, weight=1)
 
-        def _liste_p(parent, sutun, baslik_txt, liste, val_clr, sembol):
+        # Sütun referansları — popup filtresi için
+        an_col_ref  = sutun_bul(df_red, ["ana neden","Ana Neden","ana_neden"]) if not df_red.empty else None
+        if not df_red.empty:
+            if red_tipi == "Operasyon Red":
+                ac_col_ref = (sutun_bul(df_red, ["kantar red","kantar"])
+                              or sutun_bul(df_red, ["iptal aciklama","İptal Aciklama","aciklama","neden"]))
+            elif red_tipi == "Sevkiyat Red":
+                ac_col_ref = sutun_bul(df_red, ["iptal aciklama","İptal Aciklama","aciklama","neden","kantar red","kantar"])
+            else:
+                ac_col_ref = sutun_bul(df_red, ["iptal aciklama","İptal Aciklama","aciklama","neden"])
+        else:
+            ac_col_ref = None
+
+        def _detay_popup_filtreli(filtre_deger, filtre_col, popup_baslik):
+            """Seçilen değere göre df_red filtrelenerek detay popup açılır."""
+            if df_red.empty or not filtre_col:
+                messagebox.showwarning("Uyarı","Veri yok."); return
+            mask = df_red[filtre_col].astype(str).str.strip() == str(filtre_deger).strip()
+            df_fil = df_red[mask].copy()
+            if df_fil.empty:
+                messagebox.showinfo("Bilgi", f"'{filtre_deger}' için kayıt bulunamadı.")
+                return
+            self._red_detay_popup(
+                f"{red_tipi}  ›  {popup_baslik}",
+                df_fil, nak_col, durum_col, acik_col, tarih_col, plaka_col)
+
+        def _liste_p(parent, sutun, baslik_txt, liste, val_clr, sembol,
+                     filtre_col=None, tip=""):
             pad_l = (0,5) if sutun == 0 else (5,5) if sutun == 1 else (5,0)
             c = ctk.CTkFrame(parent, fg_color=C["card"], corner_radius=10,
                              border_width=1, border_color=C["border"])
             c.grid(row=0, column=sutun, sticky="nsew", padx=pad_l)
             c.grid_columnconfigure(0, weight=1)
             c.grid_rowconfigure(1, weight=1)
-            ctk.CTkLabel(c, text=baslik_txt,
+            # Başlık + tıklanabilir ipucu
+            hdr = ctk.CTkFrame(c, fg_color="transparent")
+            hdr.grid(row=0, column=0, sticky="ew", padx=10, pady=(8,2))
+            hdr.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(hdr, text=baslik_txt,
                          font=("Arial", 11, "bold"),
                          text_color=C["altin"], anchor="w"
-                         ).grid(row=0, column=0, sticky="w", padx=10, pady=(8,4))
+                         ).grid(row=0, column=0, sticky="w")
+            if filtre_col:
+                ctk.CTkLabel(hdr, text="↗ tıkla → detay",
+                             font=("Arial", 8), text_color=C["metin_koyu"],
+                             anchor="e").grid(row=0, column=1, sticky="e")
             sc = ctk.CTkScrollableFrame(c, fg_color="transparent",
                                         scrollbar_button_color=C["border"])
             sc.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0,8))
             sc.grid_columnconfigure(0, weight=1)
             if liste:
                 for i, (ad, s) in enumerate(liste):
-                    bg = C["card2"] if i%2==0 else "transparent"
-                    rw = ctk.CTkFrame(sc, fg_color=bg, corner_radius=5)
+                    bg_n  = C["card2"] if i%2==0 else "transparent"
+                    bg_hv = C["hover"]
+                    rw = ctk.CTkFrame(sc, fg_color=bg_n, corner_radius=5,
+                                      cursor="hand2" if filtre_col else "arrow")
                     rw.pack(fill="x", pady=1)
                     rw.grid_columnconfigure(0, weight=1)
-                    ctk.CTkLabel(rw, text=f"  {sembol}  {str(ad)[:40]}",
+                    lbl_ad = ctk.CTkLabel(rw, text=f"  {sembol}  {str(ad)[:40]}",
                                  font=("Consolas", 10),
-                                 text_color=C["metin"], anchor="w"
-                                 ).grid(row=0, column=0, sticky="w", padx=4, pady=3)
-                    ctk.CTkLabel(rw, text=f"{s}",
+                                 text_color=C["metin"], anchor="w")
+                    lbl_ad.grid(row=0, column=0, sticky="w", padx=4, pady=3)
+                    lbl_s  = ctk.CTkLabel(rw, text=f"{s}",
                                  font=("Arial", 10, "bold"),
-                                 text_color=val_clr
-                                 ).grid(row=0, column=1, padx=8)
+                                 text_color=val_clr)
+                    lbl_s.grid(row=0, column=1, padx=8)
+                    if filtre_col:
+                        _ad = ad; _col = filtre_col
+                        def _on_enter(e, w=rw): w.configure(fg_color=bg_hv)
+                        def _on_leave(e, w=rw, b=bg_n): w.configure(fg_color=b)
+                        def _on_click(e, v=_ad, col=_col):
+                            _detay_popup_filtreli(v, col, str(v)[:30])
+                        for w in [rw, lbl_ad, lbl_s]:
+                            w.bind("<Enter>",   _on_enter)
+                            w.bind("<Leave>",   _on_leave)
+                            w.bind("<Button-1>",_on_click)
             else:
                 ctk.CTkLabel(sc, text="Veri yok",
                              font=("Arial", 10),
@@ -3462,13 +3509,16 @@ class SeymenRaporlama(ctk.CTk):
 
         _liste_p(panel, 0,
                  f"🏢  Nakliyeci Firma  ({red_say} kayıt)",
-                 firma_listesi, C["kirmizi"], "✖")
+                 firma_listesi, C["kirmizi"], "✖",
+                 filtre_col=nak_col, tip="nakliyeci")
         _liste_p(panel, 1,
                  "🏷  Ana Neden Dağılımı",
-                 ana_neden_listesi, C["mor"], "◆")
+                 ana_neden_listesi, C["mor"], "◆",
+                 filtre_col=an_col_ref, tip="ana_neden")
         _liste_p(panel, 2,
                  "📋  İptal Açıklama Dağılımı",
-                 acik_listesi, C["turuncu"], "▶")
+                 acik_listesi, C["turuncu"], "▶",
+                 filtre_col=ac_col_ref, tip="aciklama")
 
     def _red_detay_popup(self, red_tipi, df_red,
                          nak_col, durum_col, acik_col, tarih_col, plaka_col):
