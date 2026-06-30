@@ -823,6 +823,59 @@ class VeriMotoru:
         pivot.index.name = "Nakliyeci"
         return pivot
 
+
+    def pregate_red_ana_neden_pivot(self, red_tipi):
+        """
+        Nakliyeci x Ana Neden pivot -- Pregate/Sevkiyat/Operasyon Red icin.
+        red_tipi: 'Pregate Red' | 'Sevkiyat Red' | 'Operasyon Red'
+        """
+        df = self.pregate_red_df("Poliport Terminal", red_tipi)
+        if df.empty:
+            return pd.DataFrame()
+        nak_col   = sutun_bul(df, ["nakliyeci adi","nakliyeci adi","nakliye"])
+        neden_col = sutun_bul(df, ["ana neden","Ana Neden","ana_neden","iptal neden","neden"])
+        if not nak_col or not neden_col:
+            return pd.DataFrame()
+        df = df.copy()
+        df["_N"] = df[nak_col].astype(str).str.strip().str.upper()
+        df["_D"] = df[neden_col].astype(str).str.strip()
+        df = df[~df["_N"].isin(["NAN","","NONE"])]
+        df["_D"] = df["_D"].replace({"nan":"(Belirtilmemis)","":"(Belirtilmemis)"})
+        pivot = pd.crosstab(df["_N"], df["_D"])
+        pivot["TOPLAM"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("TOPLAM", ascending=False)
+        pivot.loc["TOPLAM"] = pivot.sum()
+        pivot.index.name = "Nakliyeci"
+        return pivot
+
+    def pregate_red_iptal_detay_pivot(self, red_tipi):
+        """
+        Nakliyeci x Iptal Aciklama pivot -- Pregate/Sevkiyat/Operasyon Red icin.
+        """
+        df = self.pregate_red_df("Poliport Terminal", red_tipi)
+        if df.empty:
+            return pd.DataFrame()
+        nak_col = sutun_bul(df, ["nakliyeci adi","nakliyeci adi","nakliye"])
+        if red_tipi == "Operasyon Red":
+            acik_col = (sutun_bul(df, ["kantar red","kantar"])
+                        or sutun_bul(df, ["iptal aciklama","aciklama","neden"]))
+        else:
+            acik_col = sutun_bul(df, ["iptal aciklama","Iptal Aciklama",
+                                       "aciklama","aciklama","neden","kantar red","kantar"])
+        if not nak_col or not acik_col:
+            return pd.DataFrame()
+        df = df.copy()
+        df["_N"] = df[nak_col].astype(str).str.strip().str.upper()
+        df["_A"] = df[acik_col].astype(str).str.strip()
+        df = df[~df["_N"].isin(["NAN","","NONE"])]
+        df["_A"] = df["_A"].replace({"nan":"(Aciklama Yok)","":"(Aciklama Yok)"})
+        pivot = pd.crosstab(df["_N"], df["_A"])
+        pivot["TOPLAM"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("TOPLAM", ascending=False)
+        pivot.loc["TOPLAM"] = pivot.sum()
+        pivot.index.name = "Nakliyeci"
+        return pivot
+
     # ── Tüm departmanlar için özet sayım tablosu ─────────────────────────────
     def ozet_sayim_tablosu(self):
         """Ana sayfa KPI'larını DataFrame satırları olarak döndürür."""
@@ -3089,33 +3142,44 @@ class SeymenRaporlama(ctk.CTk):
                     pvt_r.to_excel(w, index=False,
                                    sheet_name="Pivot")
                     ws = w.sheets["Pivot"]
-                    # Başlık stili
+                    # ── Başlık satırı (Poliport Mavi) ─────────────────────
                     for ci in range(1, ws.max_column+1):
                         h = ws.cell(row=1, column=ci)
-                        h.fill = PatternFill("solid", fgColor="0D1117")
-                        h.font = Font(color="D4AF37", bold=True, size=10, name="Calibri")
+                        h.fill = PatternFill("solid", fgColor="1A3A5C")
+                        h.font = Font(color="FFFFFF", bold=True, size=10, name="Calibri")
                         h.alignment = Alignment(horizontal="center", wrap_text=True)
-                        h.border = Border(bottom=Side(style="thin", color="252D3D"))
-                    ws.row_dimensions[1].height = 24
-                    # TOPLAM satırını vurgula
+                        h.border = Border(
+                            bottom=Side(style="thin", color="2E86DE"),
+                            right=Side(style="thin", color="2E86DE")
+                        )
+                    ws.row_dimensions[1].height = 26
+                    # ── TOPLAM satırı (koyu mavi + beyaz yazı) ──────────
                     toplam_r = ws.max_row
                     for ci in range(1, ws.max_column+1):
                         h = ws.cell(row=toplam_r, column=ci)
-                        h.fill = PatternFill("solid", fgColor="1A0A00")
-                        h.font = Font(color="E67E22", bold=True, size=10, name="Calibri")
-                    # Veri satırları
+                        h.fill = PatternFill("solid", fgColor="0A1F3A")
+                        h.font = Font(color="2E86DE", bold=True, size=10, name="Calibri")
+                        h.alignment = Alignment(horizontal="center")
+                    # ── Veri satırları (açık mavi çizgili) ──────────────
                     for ri in range(2, toplam_r):
-                        bg = "141C2B" if ri%2==0 else "111827"
+                        bg = "EBF5FB" if ri%2==0 else "FFFFFF"
                         for ci in range(1, ws.max_column+1):
                             h = ws.cell(row=ri, column=ci)
                             h.fill = PatternFill("solid", fgColor=bg)
-                            h.font = Font(color="E8EDF5", size=10, name="Calibri")
-                            h.alignment = Alignment(horizontal="center")
-                    # Sütun genişlikleri
-                    ws.column_dimensions[get_column_letter(1)].width = 32
+                            fc = "1A3A5C" if ci == 1 else "1A252F"
+                            h.font = Font(color=fc, bold=(ci==1), size=10, name="Calibri")
+                            h.alignment = Alignment(horizontal="center" if ci > 1 else "left")
+                            h.border = Border(
+                                bottom=Side(style="hair", color="AED6F1"),
+                                right=Side(style="hair", color="AED6F1")
+                            )
+                    # ── Sütun genişlikleri ────────────────────────────────
+                    ws.column_dimensions[get_column_letter(1)].width = 34
                     for ci in range(2, ws.max_column+1):
                         hdr = str(ws.cell(row=1,column=ci).value or "")
                         ws.column_dimensions[get_column_letter(ci)].width = min(max(len(hdr)+2,10),40)
+                    # ── Dondur ──────────────────────────────────────────
+                    ws.freeze_panes = "B2"
                 self._bildirim(f"✔  {os.path.basename(yol)} kaydedildi")
             except Exception as e:
                 messagebox.showerror("Hata", f"Excel oluşturulamadı:\n{e}")
@@ -3559,7 +3623,96 @@ class SeymenRaporlama(ctk.CTk):
             fg_color="#5D4037", hover_color="#3D2410",
             font=("Arial", 12, "bold"), height=34, corner_radius=8,
             command=self._nakliye_red
+        ).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            btn_f,
+            text="📊  Ana Neden Pivot  →  Excel",
+            fg_color="#1A3A5C", hover_color="#122840",
+            text_color="#FFFFFF",
+            font=("Arial", 12, "bold"), height=34, corner_radius=8,
+            command=lambda rt=red_tipi: _pregate_pivot_excel_kaydet(rt, "ana_neden")
+        ).pack(side="left", padx=(0, 8))
+
+        ctk.CTkButton(
+            btn_f,
+            text="📋  İptal Detay Pivot  →  Excel",
+            fg_color="#154360", hover_color="#0E2F44",
+            text_color="#FFFFFF",
+            font=("Arial", 12, "bold"), height=34, corner_radius=8,
+            command=lambda rt=red_tipi: _pregate_pivot_excel_kaydet(rt, "iptal_detay")
         ).pack(side="left")
+
+        def _pregate_pivot_excel_kaydet(rt, pivot_tipi):
+            if pivot_tipi == "ana_neden":
+                pvt = self.motor.pregate_red_ana_neden_pivot(rt)
+                ad  = f"AnaNeden_{rt.replace(' ','_')}"
+            else:
+                pvt = self.motor.pregate_red_iptal_detay_pivot(rt)
+                ad  = f"IptalDetay_{rt.replace(' ','_')}"
+
+            if pvt.empty:
+                messagebox.showwarning("Uyarı",
+                    "Pivot oluşturulamadı — veri dosyasında ilgili sütun bulunamadı.")
+                return
+
+            yol = filedialog.asksaveasfilename(
+                title="Pivot Tabloyu Kaydet",
+                defaultextension=".xlsx",
+                initialfile=f"{ad}_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                filetypes=[("Excel","*.xlsx")]
+            )
+            if not yol:
+                return
+            try:
+                from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+                pvt_r = pvt.reset_index()
+                with pd.ExcelWriter(yol, engine="openpyxl") as w:
+                    pvt_r.to_excel(w, index=False, sheet_name="Pivot")
+                    ws = w.sheets["Pivot"]
+                    # ── Başlık satırı (Poliport Mavi) ─────────────────
+                    for ci in range(1, ws.max_column + 1):
+                        h = ws.cell(row=1, column=ci)
+                        h.fill = PatternFill("solid", fgColor="1A3A5C")
+                        h.font = Font(color="FFFFFF", bold=True, size=10, name="Calibri")
+                        h.alignment = Alignment(horizontal="center", wrap_text=True)
+                        h.border = Border(
+                            bottom=Side(style="thin", color="2E86DE"),
+                            right=Side(style="thin", color="2E86DE")
+                        )
+                    ws.row_dimensions[1].height = 26
+                    # ── TOPLAM satırı (koyu mavi + altın yazı) ─────────
+                    toplam_r = ws.max_row
+                    for ci in range(1, ws.max_column + 1):
+                        h = ws.cell(row=toplam_r, column=ci)
+                        h.fill = PatternFill("solid", fgColor="0A1F3A")
+                        h.font = Font(color="2E86DE", bold=True, size=10, name="Calibri")
+                        h.alignment = Alignment(horizontal="center")
+                    # ── Veri satırları (açık mavi çizgili) ─────────────
+                    for ri in range(2, toplam_r):
+                        bg = "EBF5FB" if ri % 2 == 0 else "FFFFFF"
+                        for ci in range(1, ws.max_column + 1):
+                            h = ws.cell(row=ri, column=ci)
+                            h.fill = PatternFill("solid", fgColor=bg)
+                            fc = "1A3A5C" if ci == 1 else "1A252F"
+                            bold_flag = (ci == 1)
+                            h.font = Font(color=fc, bold=bold_flag, size=10, name="Calibri")
+                            h.alignment = Alignment(horizontal="center" if ci > 1 else "left")
+                            h.border = Border(
+                                bottom=Side(style="hair", color="AED6F1"),
+                                right=Side(style="hair", color="AED6F1")
+                            )
+                    # ── Sütun genişlikleri ─────────────────────────────
+                    ws.column_dimensions[get_column_letter(1)].width = 34
+                    for ci in range(2, ws.max_column + 1):
+                        hdr = str(ws.cell(row=1, column=ci).value or "")
+                        ws.column_dimensions[get_column_letter(ci)].width = min(max(len(hdr) + 2, 10), 40)
+                    # ── Dondur (başlık + nakliyeci sütunu) ────────────
+                    ws.freeze_panes = "B2"
+                self._bildirim(f"✔  {os.path.basename(yol)} kaydedildi")
+            except Exception as e:
+                messagebox.showerror("Hata", f"Excel oluşturulamadı:\n{e}")
 
         # Üç panel: Nakliyeci | Ana Neden | İptal Açıklama
         panel = ctk.CTkFrame(ana, fg_color="transparent")
