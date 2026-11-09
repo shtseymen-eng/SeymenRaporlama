@@ -80,13 +80,10 @@ jobs:
           file dist_mac/SeymenRaporlama.app/Contents/MacOS/SeymenRaporlama
           codesign --verify --deep --strict dist_mac/SeymenRaporlama.app
 
-      - name: Package genuine application as DMG
+      - name: Package genuine macOS application
         run: |
-          mkdir dmg-content
-          cp -R dist_mac/SeymenRaporlama.app dmg-content/
-          ln -s /Applications dmg-content/Applications
-          hdiutil create -volname SeymenRaporlama -srcfolder dmg-content -ov -format UDZO dist_mac/SeymenRaporlama.dmg
-          hdiutil verify dist_mac/SeymenRaporlama.dmg
+          ditto -c -k --sequesterRsrc --keepParent dist_mac/SeymenRaporlama.app dist_mac/SeymenRaporlama_mac.zip
+          unzip -t dist_mac/SeymenRaporlama_mac.zip
 
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
@@ -129,7 +126,7 @@ jobs:
             | Platform | İndir |
             |----------|-------|
             | 🪟 Windows | `SeymenRaporlama.exe` — indirip çift tıkla |
-            | 🍎 macOS   | `SeymenRaporlama.dmg` — aç, Applications'a sürükle |
+            | 🍎 macOS   | `SeymenRaporlama_mac.zip` — arşivi aç, uygulamayı Applications klasörüne taşı |
 
             > Windows 10/11 x64 ve macOS 15+ Apple Silicon. Python gerekmez. Paketler geliştirici sertifikasıyla imzalanmamış ve Apple noter onayından geçmemiştir; işletim sistemi ilk açılışta güvenlik onayı isteyebilir.
 
