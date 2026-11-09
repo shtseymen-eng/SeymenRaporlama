@@ -54,7 +54,7 @@ jobs:
   # ══════════════════════════════════════════════════════════════════════════
   build-macos:
     name: 🍎 macOS APP
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +131,7 @@ jobs:
             | 🪟 Windows | `SeymenRaporlama.exe` — indirip çift tıkla |
             | 🍎 macOS   | `SeymenRaporlama.dmg` — aç, Applications'a sürükle |
 
-            > Windows 10/11 x64 ve macOS 14+ Apple Silicon. Python gerekmez. Paketler geliştirici sertifikasıyla imzalanmamış ve Apple noter onayından geçmemiştir; işletim sistemi ilk açılışta güvenlik onayı isteyebilir.
+            > Windows 10/11 x64 ve macOS 15+ Apple Silicon. Python gerekmez. Paketler geliştirici sertifikasıyla imzalanmamış ve Apple noter onayından geçmemiştir; işletim sistemi ilk açılışta güvenlik onayı isteyebilir.
 
             Derlenen uygulamalar izole öz-test ile Tk, görsel varlıkları ve Excel okuma/yazma açısından kontrol edilir.
           draft: false
