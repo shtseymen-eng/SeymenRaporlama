@@ -4952,5 +4952,27 @@ class SeymenRaporlama(ctk.CTk):
 # BAŞLATICI
 # ============================================================================
 if __name__ == "__main__":
-    app = SeymenRaporlama()
-    app.mainloop()
+    if len(sys.argv) == 3 and sys.argv[1] == "--self-test":
+        # Isolated packaging check: never opens user files or starts the application.
+        import json
+        import tempfile
+        import tkinter as tk
+        from pathlib import Path
+        import openpyxl
+        import pptx
+        import xlsxwriter
+        root = tk.Tk()
+        root.withdraw()
+        root.update_idletasks()
+        root.destroy()
+        assert PIL_OK
+        with Image.open(asset("logo.png")) as image:
+            image.verify()
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "smoke.xlsx"
+            pd.DataFrame({"test": [1]}).to_excel(target, index=False)
+            assert pd.read_excel(target).iloc[0, 0] == 1
+        Path(sys.argv[2]).write_text(json.dumps({"ok": True, "frozen": bool(getattr(sys, "frozen", False)), "platform": sys.platform}), encoding="utf-8")
+    else:
+        app = SeymenRaporlama()
+        app.mainloop()

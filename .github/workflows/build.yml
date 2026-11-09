@@ -6,7 +6,9 @@ on:
     tags:     [ 'v*.*.*' ]       # v1.0.0 gibi tag gelince release çıkar
   workflow_dispatch:             # elle tetikleme
 
-# ─────────────────────────────────────────────────────────────────────────────
+permissions:
+  contents: write
+
 jobs:
 
   # ══════════════════════════════════════════════════════════════════════════
@@ -32,9 +34,15 @@ jobs:
         run: pyinstaller SeymenRaporlama.spec --distpath dist_win --workpath build_win
         shell: cmd
 
-      - name: Çıktıyı kontrol et
-        run: dir dist_win
-        shell: cmd
+      - name: Verify packaged Windows application safely
+        shell: python
+        run: |
+          import json, pathlib, subprocess
+          exe = pathlib.Path('dist_win/SeymenRaporlama.exe')
+          assert exe.read_bytes()[:2] == b'MZ'
+          subprocess.run([str(exe.resolve()), '--self-test', str(pathlib.Path('smoke.json').resolve())], check=True, timeout=120)
+          assert json.loads(pathlib.Path('smoke.json').read_text())['frozen']
+
 
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
@@ -46,7 +54,7 @@ jobs:
   # ══════════════════════════════════════════════════════════════════════════
   build-macos:
     name: 🍎 macOS APP
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
@@ -65,20 +73,20 @@ jobs:
       - name: .app derle (PyInstaller spec)
         run: pyinstaller SeymenRaporlama.spec --distpath dist_mac --workpath build_mac
 
-      - name: .app → DMG paketle
+      - name: Verify packaged macOS application safely
         run: |
-          brew install create-dmg || true
-          create-dmg \
-            --volname "SeymenRaporlama" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "SeymenRaporlama.app" 175 190 \
-            --hide-extension "SeymenRaporlama.app" \
-            --app-drop-link 425 190 \
-            "dist_mac/SeymenRaporlama.dmg" \
-            "dist_mac/SeymenRaporlama.app" \
-          || (cd dist_mac && zip -r SeymenRaporlama_mac.zip SeymenRaporlama.app)
+          dist_mac/SeymenRaporlama.app/Contents/MacOS/SeymenRaporlama --self-test "$PWD/smoke.json"
+          python -c "import json; assert json.load(open('smoke.json'))['frozen']"
+          file dist_mac/SeymenRaporlama.app/Contents/MacOS/SeymenRaporlama
+          codesign --verify --deep --strict dist_mac/SeymenRaporlama.app
+
+      - name: Package genuine application as DMG
+        run: |
+          mkdir dmg-content
+          cp -R dist_mac/SeymenRaporlama.app dmg-content/
+          ln -s /Applications dmg-content/Applications
+          hdiutil create -volname SeymenRaporlama -srcfolder dmg-content -ov -format UDZO dist_mac/SeymenRaporlama.dmg
+          hdiutil verify dist_mac/SeymenRaporlama.dmg
 
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
@@ -123,7 +131,9 @@ jobs:
             | 🪟 Windows | `SeymenRaporlama.exe` — indirip çift tıkla |
             | 🍎 macOS   | `SeymenRaporlama.dmg` — aç, Applications'a sürükle |
 
-            > macOS'ta ilk açılışta: **Sağ tık → Aç → Aç** (Gatekeeper uyarısını geç)
+            > Windows 10/11 x64 ve macOS 14+ Apple Silicon. Python gerekmez. Paketler geliştirici sertifikasıyla imzalanmamış ve Apple noter onayından geçmemiştir; işletim sistemi ilk açılışta güvenlik onayı isteyebilir.
+
+            Derlenen uygulamalar izole öz-test ile Tk, görsel varlıkları ve Excel okuma/yazma açısından kontrol edilir.
           draft: false
           prerelease: false
           files: release/**
